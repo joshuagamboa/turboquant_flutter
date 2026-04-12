@@ -28,6 +28,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   TQProbeResult? _probeResult;
   TQGenerationController? _generationController;
 
+  String _selectedCacheType = 'turbo4';
+  final List<String> _cacheTypes = ['f16', 'q8_0', 'turbo3', 'turbo4'];
+
   Map<String, double> _downloadProgress = {};
   List<File> _downloadedModels = [];
 
@@ -123,7 +126,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         nCtx: _probeResult?.recommendedNCtx ?? 512,
         useGpu: _probeResult?.gpuAvailable ?? true,
         cacheTypeK: 'q8_0',
-        cacheTypeV: 'turbo4',
+        cacheTypeV: _selectedCacheType,
       );
 
       _generationController = await _turboQuant.generate(config, _promptController.text);
@@ -210,6 +213,25 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
               ElevatedButton(
                 onPressed: _isGenerating ? null : _pickModel,
                 child: Text(_modelPath == null ? 'Or Pick Local GGUF' : 'Model: ${_modelPath!.split('/').last}'),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _selectedCacheType,
+                decoration: const InputDecoration(
+                  labelText: 'KV-Cache Type (TurboQuant)',
+                  border: OutlineInputBorder(),
+                ),
+                items: _cacheTypes.map((type) {
+                  return DropdownMenuItem(
+                    value: type,
+                    child: Text(type == 'f16' ? 'f16 (Off)' : type),
+                  );
+                }).toList(),
+                onChanged: _isGenerating ? null : (value) {
+                  if (value != null) {
+                    setState(() => _selectedCacheType = value);
+                  }
+                },
               ),
               const SizedBox(height: 16),
               TextField(
