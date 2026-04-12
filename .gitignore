@@ -1,2 +1,36 @@
+# Git
+.gitmodules
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Dart/Flutter
+.dart_tool/
+.packages
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec.lock
+build/
+
+# Native builds
+native/tq_ffi/build*/
+packages/turboquant_flutter/ios/libs/
+packages/turboquant_flutter/ios/Classes/tq_ffi.h
+packages/turboquant_flutter/android/.cxx/
+
+# CocoaPods
+Podfile.lock
+
+# Models and large files
+*.gguf
+*.bin
+
+# Environment
+.env*
+
 ### Exclude docs ###
 project_plan.md

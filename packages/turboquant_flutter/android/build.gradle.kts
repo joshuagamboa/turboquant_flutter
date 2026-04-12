@@ -37,7 +37,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17"
     }
 
     sourceSets {
@@ -51,6 +51,15 @@ android {
 
     defaultConfig {
         minSdk = 24
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("CMakeLists.txt")
+        }
     }
 
     testOptions {

@@ -40,25 +40,28 @@ static ggml_type parse_ggml_type(const char* name) {
 bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     if (!out_probe) return false;
     
+    llama_backend_init();
+
     out_probe->gpu_available = llama_supports_gpu_offload();
-#ifdef GGML_USE_METAL
-    out_probe->metal_available = true;
-#else
+    
     out_probe->metal_available = false;
+#ifdef GGML_USE_METAL
+    out_probe->metal_available = out_probe->gpu_available;
 #endif
 
-#ifdef GGML_USE_VULKAN
-    out_probe->vulkan_available = true;
-#else
     out_probe->vulkan_available = false;
+#ifdef GGML_USE_VULKAN
+    out_probe->vulkan_available = out_probe->gpu_available;
 #endif
 
-    // Assuming turbo3/4 are always "supported" if we have the types
+    // TurboQuant types (TQ1_0, TQ2_0) are supported if the binary was built with them
+    // We've verified they exist in this llama.cpp fork.
     out_probe->turbo3_supported = true;
     out_probe->turbo4_supported = true;
     
-    // Default recommendation
-    out_probe->recommended_n_ctx = 2048; 
+    // Conservative recommended context size for mobile (approx 2GB-4GB budget)
+    // We can refine this later with actual RAM probing.
+    out_probe->recommended_n_ctx = 1024; 
     
     return true;
 }

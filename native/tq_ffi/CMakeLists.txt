@@ -20,8 +20,8 @@ include_directories(
     ${LLAMA_DIR}
 )
 
-# Create shared library
-add_library(tq_ffi SHARED src/tq_ffi.cpp)
+# Create library
+add_library(tq_ffi src/tq_ffi.cpp)
 
 # Link with llama.cpp
 target_link_libraries(tq_ffi PRIVATE llama common)

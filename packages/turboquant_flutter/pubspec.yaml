@@ -40,8 +40,10 @@ flutter:
       android:
         package: com.example.turboquant_flutter
         pluginClass: TurboquantFlutterPlugin
+        ffiPlugin: true
       ios:
         pluginClass: TurboquantFlutterPlugin
+        ffiPlugin: true
 
   # To add assets to your plugin package, add an assets section, like this:
   # assets:

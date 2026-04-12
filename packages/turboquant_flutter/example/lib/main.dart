@@ -21,9 +21,30 @@ class _MyAppState extends State<MyApp> {
   String _response = '';
   bool _isGenerating = false;
   String? _error;
+  TQProbeResult? _probeResult;
+  TQGenerationController? _generationController;
+
+  @override
+  void initState() {
+    super.initState();
+    _doProbe();
+  }
+
+  Future<void> _doProbe() async {
+    try {
+      final res = await _turboQuant.probe();
+      setState(() {
+        _probeResult = res;
+      });
+    } catch (e) {
+      setState(() {
+        _error = 'Probe failed: $e';
+      });
+    }
+  }
 
   Future<void> _pickModel() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFiles(
       type: FileType.any,
     );
 
@@ -52,13 +73,15 @@ class _MyAppState extends State<MyApp> {
     try {
       final config = TQConfig(
         modelPath: _modelPath!,
-        nCtx: 512,
-        useGpu: true,
+        nCtx: _probeResult?.recommendedNCtx ?? 512,
+        useGpu: _probeResult?.gpuAvailable ?? true,
+        cacheTypeK: 'q8_0',
+        cacheTypeV: 'turbo4',
       );
 
-      final stream = await _turboQuant.generate(config, _promptController.text);
+      _generationController = await _turboQuant.generate(config, _promptController.text);
       
-      await for (final response in stream) {
+      await for (final response in _generationController!.stream) {
         if (response.error != null) {
           setState(() {
             _error = response.error;
@@ -71,6 +94,7 @@ class _MyAppState extends State<MyApp> {
           _response += response.token;
           if (response.isEnd) {
             _isGenerating = false;
+            _generationController = null;
           }
         });
       }
@@ -78,8 +102,16 @@ class _MyAppState extends State<MyApp> {
       setState(() {
         _error = e.toString();
         _isGenerating = false;
+        _generationController = null;
       });
     }
+  }
+
+  void _stop() {
+    _generationController?.cancel();
+    setState(() {
+      _isGenerating = false;
+    });
   }
 
   @override
@@ -94,6 +126,12 @@ class _MyAppState extends State<MyApp> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              if (_probeResult != null) ...[
+                Text('GPU: ${_probeResult!.gpuAvailable ? "Yes" : "No"} '
+                    '(${_probeResult!.metalAvailable ? "Metal" : _probeResult!.vulkanAvailable ? "Vulkan" : "None"})'),
+                Text('TQ Support: ${_probeResult!.turbo4Supported ? "turbo4" : "None"}'),
+                const SizedBox(height: 8),
+              ],
               ElevatedButton(
                 onPressed: _isGenerating ? null : _pickModel,
                 child: Text(_modelPath == null ? 'Pick GGUF Model' : 'Model: ${_modelPath!.split('/').last}'),
@@ -108,9 +146,23 @@ class _MyAppState extends State<MyApp> {
                 maxLines: 3,
               ),
               const SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: _isGenerating || _modelPath == null ? null : _generate,
-                child: _isGenerating ? const CircularProgressIndicator() : const Text('Generate'),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _isGenerating || _modelPath == null ? null : _generate,
+                      child: _isGenerating ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Generate'),
+                    ),
+                  ),
+                  if (_isGenerating) ...[
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _stop,
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                      child: const Text('Stop'),
+                    ),
+                  ],
+                ],
               ),
               if (_error != null) ...[
                 const SizedBox(height: 16),

@@ -14,8 +14,19 @@ A new Flutter plugin project.
   s.author           = { 'Your Company' => 'email@example.com' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
+  s.public_header_files = 'Classes/**/*.h'
+  
+  s.vendored_libraries = 'libs/*.a'
+  
+  s.xcconfig = {
+    'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
+    'GCC_PREPROCESSOR_DEFINITIONS' => 'GGML_USE_METAL=1'
+  }
+  
   s.dependency 'Flutter'
   s.platform = :ios, '13.0'
+  
+  s.frameworks = 'Foundation', 'Accelerate', 'Metal', 'MetalKit'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
