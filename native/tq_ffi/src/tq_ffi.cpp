@@ -68,13 +68,13 @@ bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     
     out_probe->system_ram_mb = total_mb;
     
-    // Dynamic Context Sizing based on total RAM
+    // Aggressive Dynamic Context Sizing leveraging TurboQuant compression
     if (total_mb <= 4096) {
-        out_probe->recommended_n_ctx = 512;
-    } else if (total_mb <= 8192) {
-        out_probe->recommended_n_ctx = 1024;
-    } else {
         out_probe->recommended_n_ctx = 2048;
+    } else if (total_mb <= 8192) {
+        out_probe->recommended_n_ctx = 4096;
+    } else {
+        out_probe->recommended_n_ctx = 8192;
     }
     
     return true;
