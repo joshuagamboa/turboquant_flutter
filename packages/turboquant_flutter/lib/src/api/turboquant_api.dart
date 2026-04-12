@@ -29,6 +29,7 @@ class TQProbeResult {
   final bool vulkanAvailable;
   final bool turbo3Supported;
   final bool turbo4Supported;
+  final int systemRamMb;
   final int recommendedNCtx;
 
   TQProbeResult({
@@ -37,6 +38,7 @@ class TQProbeResult {
     required this.vulkanAvailable,
     required this.turbo3Supported,
     required this.turbo4Supported,
+    required this.systemRamMb,
     required this.recommendedNCtx,
   });
 }
@@ -94,6 +96,7 @@ class TurboQuant {
       vulkanAvailable: result['vulkanAvailable'],
       turbo3Supported: result['turbo3Supported'],
       turbo4Supported: result['turbo4Supported'],
+      systemRamMb: result['systemRamMb'],
       recommendedNCtx: result['recommendedNCtx'],
     );
   }
@@ -114,6 +117,7 @@ class TurboQuant {
         'vulkanAvailable': outProbe.ref.vulkan_available,
         'turbo3Supported': outProbe.ref.turbo3_supported,
         'turbo4Supported': outProbe.ref.turbo4_supported,
+        'systemRamMb': outProbe.ref.system_ram_mb,
         'recommendedNCtx': outProbe.ref.recommended_n_ctx,
       });
     }

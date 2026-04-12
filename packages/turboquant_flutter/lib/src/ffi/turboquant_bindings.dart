@@ -179,6 +179,9 @@ final class tq_probe_result_t extends ffi.Struct {
   @ffi.Bool()
   external bool turbo4_supported;
 
+  @ffi.Int64()
+  external int system_ram_mb;
+
   @ffi.Int32()
   external int recommended_n_ctx;
 }

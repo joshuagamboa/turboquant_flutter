@@ -130,6 +130,8 @@ class _MyAppState extends State<MyApp> {
                 Text('GPU: ${_probeResult!.gpuAvailable ? "Yes" : "No"} '
                     '(${_probeResult!.metalAvailable ? "Metal" : _probeResult!.vulkanAvailable ? "Vulkan" : "None"})'),
                 Text('TQ Support: ${_probeResult!.turbo4Supported ? "turbo4" : "None"}'),
+                Text('System RAM: ${_probeResult!.systemRamMb} MB'),
+                Text('Recommended n_ctx: ${_probeResult!.recommendedNCtx}'),
                 const SizedBox(height: 8),
               ],
               ElevatedButton(

@@ -23,6 +23,7 @@ typedef struct {
     bool vulkan_available;
     bool turbo3_supported;
     bool turbo4_supported;
+    int64_t system_ram_mb;
     int32_t recommended_n_ctx;
 } tq_probe_result_t;
 

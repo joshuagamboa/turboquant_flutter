@@ -37,6 +37,8 @@ static ggml_type parse_ggml_type(const char* name) {
     return GGML_TYPE_F16;
 }
 
+#include <unistd.h>
+
 bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     if (!out_probe) return false;
     
@@ -59,9 +61,21 @@ bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     out_probe->turbo3_supported = true;
     out_probe->turbo4_supported = true;
     
-    // Conservative recommended context size for mobile (approx 2GB-4GB budget)
-    // We can refine this later with actual RAM probing.
-    out_probe->recommended_n_ctx = 1024; 
+    long pages = sysconf(_SC_PHYS_PAGES);
+    long page_size = sysconf(_SC_PAGE_SIZE);
+    int64_t total_memory = (int64_t)pages * page_size;
+    int64_t total_mb = total_memory / (1024 * 1024);
+    
+    out_probe->system_ram_mb = total_mb;
+    
+    // Dynamic Context Sizing based on total RAM
+    if (total_mb <= 4096) {
+        out_probe->recommended_n_ctx = 512;
+    } else if (total_mb <= 8192) {
+        out_probe->recommended_n_ctx = 1024;
+    } else {
+        out_probe->recommended_n_ctx = 2048;
+    }
     
     return true;
 }
