@@ -56,12 +56,11 @@ bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     out_probe->vulkan_available = out_probe->gpu_available;
 #endif
 
-    // TurboQuant types (TQ1_0, TQ2_0) use GGML Metal kernels with SIMD matrix multiply.
-    // These work on any Apple GPU with simdgroup support (A12+), regardless of whether
-    // the newer Metal tensor hardware API is available. They require Metal (GPU) —
-    // they have no CPU fallback — so only report supported when Metal is available.
-    out_probe->turbo3_supported = out_probe->metal_available;
-    out_probe->turbo4_supported = out_probe->metal_available;
+    // TurboQuant types (TQ1_0, TQ2_0) require Apple10 GPU family (A19 / M5) or later.
+    // Confirmed crash (SIGABRT in llama_contextC2) on Apple9 (A18) during KV cache init.
+    // Hard-coded false until we have a device with Apple10 GPU to validate against.
+    out_probe->turbo3_supported = false;
+    out_probe->turbo4_supported = false;
     
     long pages = sysconf(_SC_PHYS_PAGES);
     long page_size = sysconf(_SC_PAGE_SIZE);
