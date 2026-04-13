@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 
 void main() {
   runApp(const MyApp());
@@ -17,7 +18,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
-  final _turboQuant = TurboQuant();
+  late final TurboQuant _turboQuant;
+  bool _turboQuantInitialized = false;
   
   String? _modelPath;
   final _promptController = TextEditingController(text: 'Tell me a short story about a space pirate.');
@@ -29,12 +31,17 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   String _selectedCacheType = 'turbo4';
   final List<String> _cacheTypes = ['f16', 'q8_0', 'turbo3', 'turbo4'];
+  List<File> _localModels = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _doProbe();
+    // Run probe after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+       _doProbe();
+       _scanModels();
+    });
   }
 
   @override
@@ -54,7 +61,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _initTurboQuant() async {
+    if (!_turboQuantInitialized) {
+      try {
+        print('DEBUG: Initializing TurboQuant...');
+        _turboQuant = TurboQuant();
+        _turboQuantInitialized = true;
+        print('DEBUG: TurboQuant Initialized.');
+      } catch (e) {
+        print('DEBUG: TurboQuant Initialization failed: $e');
+        setState(() => _error = 'Init failed: $e');
+      }
+    }
+  }
+
+  Future<void> _scanModels() async {
+    try {
+      final directory = await getApplicationDocumentsDirectory();
+      final List<File> allFiles = [];
+      
+      if (await directory.exists()) {
+        allFiles.addAll(directory.listSync().whereType<File>().where((f) => f.path.endsWith('.gguf')));
+      }
+
+      final modelDir = Directory('${directory.path}/models');
+      if (await modelDir.exists()) {
+        allFiles.addAll(modelDir.listSync().whereType<File>().where((f) => f.path.endsWith('.gguf')));
+      }
+
+      setState(() {
+        _localModels = allFiles;
+        if (_modelPath == null && allFiles.isNotEmpty) {
+          _modelPath = allFiles.first.path;
+        }
+      });
+    } catch (e) {
+      print('Scan failed: $e');
+    }
+  }
+
   Future<void> _doProbe() async {
+    await _initTurboQuant();
+    if (!_turboQuantInitialized) return;
     try {
       final res = await _turboQuant.probe();
       setState(() {
@@ -82,11 +130,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   Future<void> _generate() async {
     if (_modelPath == null) {
-      setState(() {
-        _error = 'Please pick a model first';
-      });
+      setState(() => _error = 'Please pick a model first');
       return;
     }
+
+    await _initTurboQuant();
+    if (!_turboQuantInitialized) return;
 
     setState(() {
       _response = '';
@@ -99,10 +148,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final size = await file.length();
       print('DEBUG: Loading model file of size: $size bytes');
 
+      final bool looksLikeSimulator = Platform.isIOS && (_probeResult?.systemRamMb ?? 0) < 4000;
+      
       final config = TQConfig(
         modelPath: _modelPath!,
-        nCtx: Platform.isAndroid ? 512 : (_probeResult?.recommendedNCtx ?? 512),
-        useGpu: _probeResult?.gpuAvailable ?? true,
+        nCtx: looksLikeSimulator ? 128 : (_probeResult?.recommendedNCtx ?? 1024),
+        useGpu: looksLikeSimulator ? false : (_probeResult?.gpuAvailable ?? true),
         cacheTypeK: 'q8_0',
         cacheTypeV: _selectedCacheType,
       );
@@ -173,6 +224,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 Text('System RAM: ${_probeResult!.systemRamMb} MB'),
                 Text('Recommended n_ctx: ${_probeResult!.recommendedNCtx}'),
                 const SizedBox(height: 8),
+              ] else ...[
+                ElevatedButton(onPressed: _doProbe, child: const Text("Run Hardware Probe")),
+                const SizedBox(height: 8),
               ],
               const Divider(),
               const Text('Download Gemma 4 Models (External):', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -181,6 +235,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 child: const Text('Gemma 4 E2B IT (Unsloth GGUF Repo)'),
               ),
               const Divider(),
+              if (_localModels.isNotEmpty) ...[
+                const Text('Local Models found in /models:', style: TextStyle(fontWeight: FontWeight.bold)),
+                ..._localModels.map((f) => ListTile(
+                  title: Text(f.path.split('/').last),
+                  leading: const Icon(Icons.model_training),
+                  onTap: () => setState(() => _modelPath = f.path),
+                  selected: _modelPath == f.path,
+                )),
+                const Divider(),
+              ],
               ElevatedButton(
                 onPressed: _isGenerating ? null : _pickModel,
                 style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),

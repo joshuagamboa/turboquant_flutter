@@ -118,10 +118,19 @@ tq_engine_t* tq_init(tq_config_t config, char* err, int32_t err_cap) {
     LOGD("Native tq_init loading: %s", config.model_path);
     FILE* f = fopen(config.model_path, "rb");
     if (f) {
+        char magic[4];
+        if (fread(magic, 1, 4, f) != 4 || memcmp(magic, "GGUF", 4) != 0) {
+            LOGD("File is NOT a valid GGUF (Magic check failed)");
+            if (err && err_cap > 0) {
+                snprintf(err, err_cap, "Invalid GGUF file: %s", config.model_path);
+            }
+            fclose(f);
+            return nullptr;
+        }
         fseek(f, 0, SEEK_END);
         long size = ftell(f);
         fseek(f, 0, SEEK_SET);
-        LOGD("File exists, size: %ld bytes", size);
+        LOGD("Valid GGUF found, size: %ld bytes", size);
         fclose(f);
     } else {
         LOGD("File NOT found or NOT readable via fopen");

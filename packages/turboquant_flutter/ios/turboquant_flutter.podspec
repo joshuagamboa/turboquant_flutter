@@ -20,8 +20,7 @@ A new Flutter plugin project.
   
   s.xcconfig = {
     'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17',
-    'GCC_PREPROCESSOR_DEFINITIONS' => 'GGML_USE_METAL=1',
-    'OTHER_LDFLAGS' => '-all_load'
+    'GCC_PREPROCESSOR_DEFINITIONS' => 'GGML_USE_METAL=1'
   }
   
   s.dependency 'Flutter'
