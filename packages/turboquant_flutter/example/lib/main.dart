@@ -3,7 +3,7 @@ import 'package:turboquant_flutter/src/api/turboquant_api.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:async';
 import 'dart:io';
-import 'model_manager.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 void main() {
   runApp(const MyApp());
@@ -18,7 +18,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   final _turboQuant = TurboQuant();
-  final _modelManager = ModelManager();
   
   String? _modelPath;
   final _promptController = TextEditingController(text: 'Tell me a short story about a space pirate.');
@@ -31,15 +30,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   String _selectedCacheType = 'turbo4';
   final List<String> _cacheTypes = ['f16', 'q8_0', 'turbo3', 'turbo4'];
 
-  Map<String, double> _downloadProgress = {};
-  List<File> _downloadedModels = [];
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _doProbe();
-    _refreshModels();
   }
 
   @override
@@ -56,27 +51,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       if (_isGenerating) {
         _stop();
       }
-    }
-  }
-
-  Future<void> _refreshModels() async {
-    final models = await _modelManager.getDownloadedModels();
-    setState(() {
-      _downloadedModels = models;
-    });
-  }
-
-  Future<void> _downloadModel(GGUFModel model) async {
-    try {
-      setState(() => _error = null);
-      await _modelManager.downloadModel(model, (progress) {
-        setState(() {
-          _downloadProgress[model.filename] = progress;
-        });
-      });
-      await _refreshModels();
-    } catch (e) {
-      setState(() => _error = 'Download failed: $e');
     }
   }
 
@@ -121,9 +95,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
 
     try {
+      final file = File(_modelPath!);
+      final size = await file.length();
+      print('DEBUG: Loading model file of size: $size bytes');
+
       final config = TQConfig(
         modelPath: _modelPath!,
-        nCtx: _probeResult?.recommendedNCtx ?? 512,
+        nCtx: Platform.isAndroid ? 512 : (_probeResult?.recommendedNCtx ?? 512),
         useGpu: _probeResult?.gpuAvailable ?? true,
         cacheTypeK: 'q8_0',
         cacheTypeV: _selectedCacheType,
@@ -171,6 +149,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     });
   }
 
+  Future<void> _launchUrl(String url) async {
+    if (!await launchUrl(Uri.parse(url))) {
+      setState(() => _error = 'Could not launch $url');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -191,28 +175,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                 const SizedBox(height: 8),
               ],
               const Divider(),
-              const Text('Test Models (Gemma 4 E2B)', style: TextStyle(fontWeight: FontWeight.bold)),
-              ...ModelManager.testModels.map((m) {
-                final isDownloaded = _downloadedModels.any((f) => f.path.endsWith(m.filename));
-                final progress = _downloadProgress[m.filename];
-                return ListTile(
-                  title: Text(m.name),
-                  trailing: isDownloaded 
-                    ? const Icon(Icons.check_circle, color: Colors.green)
-                    : (progress != null && progress < 1.0)
-                      ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(value: progress))
-                      : IconButton(icon: const Icon(Icons.download), onPressed: () => _downloadModel(m)),
-                  onTap: isDownloaded ? () async {
-                    final path = await _modelManager.getLocalPath(m.filename);
-                    setState(() => _modelPath = path);
-                  } : null,
-                  selected: _modelPath?.endsWith(m.filename) ?? false,
-                );
-              }),
+              const Text('Download Gemma 4 Models (External):', style: TextStyle(fontWeight: FontWeight.bold)),
+              TextButton(
+                onPressed: () => _launchUrl('https://huggingface.co/unsloth/gemma-4-2b-it-GGUF'),
+                child: const Text('Gemma 4 E2B IT (Unsloth GGUF Repo)'),
+              ),
               const Divider(),
               ElevatedButton(
                 onPressed: _isGenerating ? null : _pickModel,
-                child: Text(_modelPath == null ? 'Or Pick Local GGUF' : 'Model: ${_modelPath!.split('/').last}'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                child: Text(_modelPath == null ? 'SELECT LOCAL GGUF MODEL' : 'Model: ${_modelPath!.split('/').last}'),
               ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(

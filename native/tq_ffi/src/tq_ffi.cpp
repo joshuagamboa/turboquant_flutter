@@ -80,11 +80,56 @@ bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     return true;
 }
 
+#include <mutex>
+
+static std::once_flag backend_init_flag;
+
+#ifdef ANDROID
+#include <android/log.h>
+#define LOG_TAG "TurboQuantNative"
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+
+static void llama_log_callback(ggml_log_level level, const char * text, void * user_data) {
+    (void)level; (void)user_data;
+    __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, "%s", text);
+}
+#else
+#define LOGD(...) printf(__VA_ARGS__)
+static void llama_log_callback(ggml_log_level level, const char * text, void * user_data) {
+    (void)level; (void)user_data;
+    printf("%s", text);
+}
+#endif
+
 tq_engine_t* tq_init(tq_config_t config, char* err, int32_t err_cap) {
-    llama_backend_init();
+    if (config.model_path == nullptr || strlen(config.model_path) == 0) {
+        if (err && err_cap > 0) snprintf(err, err_cap, "Model path is empty");
+        return nullptr;
+    }
+
+    std::call_once(backend_init_flag, []() {
+        llama_backend_init();
+        llama_log_set(llama_log_callback, nullptr);
+    });
 
     llama_model_params mparams = llama_model_default_params();
     mparams.n_gpu_layers = config.use_gpu ? 99 : 0;
+
+    LOGD("Native tq_init loading: %s", config.model_path);
+    FILE* f = fopen(config.model_path, "rb");
+    if (f) {
+        fseek(f, 0, SEEK_END);
+        long size = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        LOGD("File exists, size: %ld bytes", size);
+        fclose(f);
+    } else {
+        LOGD("File NOT found or NOT readable via fopen");
+        if (err && err_cap > 0) {
+            snprintf(err, err_cap, "File NOT found or NOT readable: %s", config.model_path);
+        }
+        return nullptr;
+    }
 
     llama_model* model = llama_model_load_from_file(config.model_path, mparams);
     if (!model) {

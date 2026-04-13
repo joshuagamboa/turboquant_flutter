@@ -26,6 +26,10 @@ add_library(tq_ffi src/tq_ffi.cpp)
 # Link with llama.cpp
 target_link_libraries(tq_ffi PRIVATE llama common)
 
+if (ANDROID)
+    target_link_libraries(tq_ffi PRIVATE log)
+endif()
+
 # Platform specific configurations
 if (APPLE)
     # Metal is usually enabled by default in llama.cpp for Apple

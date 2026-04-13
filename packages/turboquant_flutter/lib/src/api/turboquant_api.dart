@@ -191,7 +191,13 @@ class TurboQuant {
     final errBuf = calloc<Char>(1024);
     
     final nativeConfig = calloc<tq_config_t>();
-    nativeConfig.ref.model_path = params.config.modelPath.toNativeUtf8().cast<Char>();
+    String path = params.config.modelPath;
+    print('DEBUG: TurboQuant loading model from path: $path');
+    if (path.startsWith('file://')) {
+      path = Uri.parse(path).toFilePath();
+      print('DEBUG: Stripped file://, new path: $path');
+    }
+    nativeConfig.ref.model_path = path.toNativeUtf8().cast<Char>();
     nativeConfig.ref.n_ctx = params.config.nCtx;
     nativeConfig.ref.n_threads = params.config.nThreads;
     nativeConfig.ref.cache_type_k = params.config.cacheTypeK.toNativeUtf8().cast<Char>();
