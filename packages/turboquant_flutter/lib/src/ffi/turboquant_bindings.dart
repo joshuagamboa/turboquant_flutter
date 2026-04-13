@@ -56,6 +56,36 @@ class TurboQuantBindings {
         )
       >();
 
+  bool tq_validate_config(
+    tq_config_t config,
+    ffi.Pointer<tq_validation_result_t> out_result,
+    ffi.Pointer<ffi.Char> err,
+    int err_cap,
+  ) {
+    return _tq_validate_config(config, out_result, err, err_cap);
+  }
+
+  late final _tq_validate_configPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Bool Function(
+            tq_config_t,
+            ffi.Pointer<tq_validation_result_t>,
+            ffi.Pointer<ffi.Char>,
+            ffi.Int32,
+          )
+        >
+      >('tq_validate_config');
+  late final _tq_validate_config = _tq_validate_configPtr
+      .asFunction<
+        bool Function(
+          tq_config_t,
+          ffi.Pointer<tq_validation_result_t>,
+          ffi.Pointer<ffi.Char>,
+          int,
+        )
+      >();
+
   ffi.Pointer<tq_engine_t> tq_init(
     tq_config_t config,
     ffi.Pointer<ffi.Char> err,
@@ -159,8 +189,11 @@ final class tq_config_t extends ffi.Struct {
 
   external ffi.Pointer<ffi.Char> cache_type_v;
 
+  @ffi.Int32()
+  external int n_gpu_layers;
+
   @ffi.Bool()
-  external bool use_gpu;
+  external bool offload_kv;
 }
 
 final class tq_probe_result_t extends ffi.Struct {
@@ -174,16 +207,51 @@ final class tq_probe_result_t extends ffi.Struct {
   external bool vulkan_available;
 
   @ffi.Bool()
+  external bool is_simulator;
+
+  @ffi.Bool()
   external bool turbo3_supported;
 
   @ffi.Bool()
   external bool turbo4_supported;
+
+  @ffi.Bool()
+  external bool simdgroup_reduction_available;
+
+  @ffi.Bool()
+  external bool tensor_api_available;
+
+  @ffi.Int32()
+  external int apple_gpu_family;
 
   @ffi.Int64()
   external int system_ram_mb;
 
   @ffi.Int32()
   external int recommended_n_ctx;
+}
+
+final class tq_validation_result_t extends ffi.Struct {
+  @ffi.Bool()
+  external bool success;
+
+  @ffi.Bool()
+  external bool gpu_layers_enabled;
+
+  @ffi.Bool()
+  external bool offload_kv;
+
+  @ffi.Bool()
+  external bool cpu_kv_fallback;
+
+  @ffi.Bool()
+  external bool flash_attention_auto;
+
+  @ffi.Bool()
+  external bool flash_attention_required;
+
+  @ffi.Int32()
+  external int n_gpu_layers;
 }
 
 typedef tq_token_cbFunction =
