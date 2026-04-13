@@ -56,10 +56,12 @@ bool tq_probe(tq_probe_result_t* out_probe, char* err, int32_t err_cap) {
     out_probe->vulkan_available = out_probe->gpu_available;
 #endif
 
-    // TurboQuant types (TQ1_0, TQ2_0) are supported if the binary was built with them
-    // We've verified they exist in this llama.cpp fork.
-    out_probe->turbo3_supported = true;
-    out_probe->turbo4_supported = true;
+    // TurboQuant types (TQ1_0, TQ2_0) use GGML Metal kernels with SIMD matrix multiply.
+    // These work on any Apple GPU with simdgroup support (A12+), regardless of whether
+    // the newer Metal tensor hardware API is available. They require Metal (GPU) —
+    // they have no CPU fallback — so only report supported when Metal is available.
+    out_probe->turbo3_supported = out_probe->metal_available;
+    out_probe->turbo4_supported = out_probe->metal_available;
     
     long pages = sysconf(_SC_PHYS_PAGES);
     long page_size = sysconf(_SC_PAGE_SIZE);
@@ -210,24 +212,30 @@ bool tq_generate(
     if (llama_decode(engine->ctx, batch) != 0) {
         llama_batch_free(batch);
         if (err && err_cap > 0) snprintf(err, err_cap, "Initial decode failed");
+        callback("", true, user_data);
         return false;
     }
 
     int32_t n_cur = tokens_list.size();
-    
-    // Sampling
+
+    // Sampling — order matters: filter first, then select.
+    // dist MUST be last; placing it before top_k/top_p causes the selected
+    // index to exceed the reduced candidate list size → GGML_ASSERT crash.
     auto sparams = llama_sampler_chain_default_params();
     llama_sampler* smpl = llama_sampler_chain_init(sparams);
     llama_sampler_chain_add(smpl, llama_sampler_init_temp(0.7f));
-    llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_k(40));
     llama_sampler_chain_add(smpl, llama_sampler_init_top_p(0.95f, 1));
+    llama_sampler_chain_add(smpl, llama_sampler_init_dist(42));
+
+    bool sent_end = false;
 
     while (n_cur < llama_n_ctx(engine->ctx) && !engine->stop_generation) {
         const llama_token id = llama_sampler_sample(smpl, engine->ctx, -1);
-        
+
         if (llama_vocab_is_eog(vocab, id)) {
             callback("", true, user_data);
+            sent_end = true;
             break;
         }
 
@@ -245,8 +253,15 @@ bool tq_generate(
 
         if (llama_decode(engine->ctx, batch) != 0) {
             if (err && err_cap > 0) snprintf(err, err_cap, "Decode failed at step %d", n_cur);
+            callback("", true, user_data);
+            sent_end = true;
             break;
         }
+    }
+
+    // Emit isEnd for context-full and stop-requested exits (EOG/error already sent it above)
+    if (!sent_end) {
+        callback("", true, user_data);
     }
 
     llama_batch_free(batch);

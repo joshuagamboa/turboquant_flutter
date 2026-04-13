@@ -69,14 +69,28 @@ class TurboQuant {
   }
 
   static DynamicLibrary _loadLibrary() {
-    if (Platform.environment.containsKey('TQ_FFI_PATH')) {
-      return DynamicLibrary.open(Platform.environment['TQ_FFI_PATH']!);
-    }
-    if (Platform.isMacOS || Platform.isIOS) {
-      return DynamicLibrary.process();
-    }
-    if (Platform.isAndroid || Platform.isLinux) {
-      return DynamicLibrary.open('libtq_ffi.so');
+    try {
+      if (Platform.environment.containsKey('TQ_FFI_PATH')) {
+        return DynamicLibrary.open(Platform.environment['TQ_FFI_PATH']!);
+      }
+      if (Platform.isMacOS) {
+        return DynamicLibrary.process();
+      }
+      if (Platform.isIOS) {
+        // Try @rpath for linked framework
+        try {
+           return DynamicLibrary.open('turboquant_flutter.framework/turboquant_flutter');
+        } catch (e) {
+           print('DEBUG: Failed to open via turboquant_flutter.framework, trying process(): $e');
+           return DynamicLibrary.process();
+        }
+      }
+      if (Platform.isAndroid || Platform.isLinux) {
+        return DynamicLibrary.open('libtq_ffi.so');
+      }
+    } catch (e) {
+      print('CRITICAL: Failed to load native library: $e');
+      rethrow;
     }
     throw UnsupportedError('Unsupported platform: ${Platform.operatingSystem}');
   }
@@ -128,7 +142,6 @@ class TurboQuant {
 
   Future<TQGenerationController> generate(TQConfig config, String prompt) async {
     final receivePort = ReceivePort();
-    final commandPort = ReceivePort();
     final errorPort = ReceivePort();
 
     final isolate = await Isolate.spawn(
@@ -137,47 +150,38 @@ class TurboQuant {
         config: config,
         prompt: prompt,
         sendPort: receivePort.sendPort,
-        commandPort: commandPort.sendPort,
       ),
       onError: errorPort.sendPort,
     );
 
     final controller = StreamController<TQTokenResponse>();
-    late final SendPort workerCommandPort;
 
-    final completer = Completer<void>();
+    void cleanup() {
+      receivePort.close();
+      errorPort.close();
+      isolate.kill(priority: Isolate.immediate);
+      if (!controller.isClosed) controller.close();
+    }
 
     receivePort.listen((message) {
-      if (message is SendPort) {
-        workerCommandPort = message;
-        completer.complete();
-      } else if (message is TQTokenResponse) {
-        controller.add(message);
+      if (message is TQTokenResponse) {
+        if (!controller.isClosed) controller.add(message);
         if (message.isEnd || message.error != null) {
-          receivePort.close();
-          commandPort.close();
-          errorPort.close();
-          isolate.kill(priority: Isolate.immediate);
-          controller.close();
+          cleanup();
         }
       }
     });
 
     errorPort.listen((error) {
-      controller.add(TQTokenResponse(token: '', isEnd: true, error: error.toString()));
-      receivePort.close();
-      commandPort.close();
-      errorPort.close();
-      isolate.kill(priority: Isolate.immediate);
-      controller.close();
+      if (!controller.isClosed) {
+        controller.add(TQTokenResponse(token: '', isEnd: true, error: error.toString()));
+      }
+      cleanup();
     });
 
     return TQGenerationController(
       stream: controller.stream,
-      onCancel: () async {
-        await completer.future;
-        workerCommandPort.send('stop');
-      },
+      onCancel: cleanup,
     );
   }
 
@@ -185,12 +189,9 @@ class TurboQuant {
     final tq = TurboQuant();
     final bindings = tq._bindings;
 
-    final commandReceivePort = ReceivePort();
-    params.sendPort.send(commandReceivePort.sendPort);
-
     final errBuf = calloc<Char>(1024);
-    
     final nativeConfig = calloc<tq_config_t>();
+
     String path = params.config.modelPath;
     print('DEBUG: TurboQuant loading model from path: $path');
     if (path.startsWith('file://')) {
@@ -205,22 +206,16 @@ class TurboQuant {
     nativeConfig.ref.use_gpu = params.config.useGpu;
 
     final engine = bindings.tq_init(nativeConfig.ref, errBuf, 1024);
-    
+
     if (engine == nullptr) {
       params.sendPort.send(TQTokenResponse(
         token: '',
         isEnd: true,
         error: errBuf.cast<Utf8>().toDartString(),
       ));
-      _cleanupIsolate(nativeConfig, errBuf, commandReceivePort);
+      _cleanupIsolate(nativeConfig, errBuf);
       return;
     }
-
-    commandReceivePort.listen((message) {
-      if (message == 'stop') {
-        bindings.tq_stop_generation(engine);
-      }
-    });
 
     final promptPtr = params.prompt.toNativeUtf8().cast<Char>();
 
@@ -231,7 +226,7 @@ class TurboQuant {
       },
     );
 
-    bindings.tq_generate(
+    final genOk = bindings.tq_generate(
       engine,
       promptPtr,
       callback.nativeFunction,
@@ -240,15 +235,22 @@ class TurboQuant {
       1024,
     );
 
+    if (!genOk) {
+      final msg = errBuf.cast<Utf8>().toDartString();
+      params.sendPort.send(TQTokenResponse(
+        token: '',
+        isEnd: true,
+        error: 'Generate failed: $msg',
+      ));
+    }
+
     bindings.tq_free(engine);
-    
     callback.close();
     calloc.free(promptPtr);
-    _cleanupIsolate(nativeConfig, errBuf, commandReceivePort);
+    _cleanupIsolate(nativeConfig, errBuf);
   }
 
-  static void _cleanupIsolate(Pointer<tq_config_t> nativeConfig, Pointer<Char> errBuf, ReceivePort commandReceivePort) {
-    commandReceivePort.close();
+  static void _cleanupIsolate(Pointer<tq_config_t> nativeConfig, Pointer<Char> errBuf) {
     calloc.free(errBuf);
     if (nativeConfig.ref.model_path != nullptr) calloc.free(nativeConfig.ref.model_path);
     if (nativeConfig.ref.cache_type_k != nullptr) calloc.free(nativeConfig.ref.cache_type_k);
@@ -261,12 +263,10 @@ class _IsolateParams {
   final TQConfig config;
   final String prompt;
   final SendPort sendPort;
-  final SendPort commandPort;
 
   _IsolateParams({
     required this.config,
     required this.prompt,
     required this.sendPort,
-    required this.commandPort,
   });
 }

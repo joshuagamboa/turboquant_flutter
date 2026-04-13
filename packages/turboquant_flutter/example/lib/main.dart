@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 
 void main() {
+  print('--- FLUTTER MAIN STARTING ---');
   runApp(const MyApp());
 }
 
@@ -29,17 +30,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   TQProbeResult? _probeResult;
   TQGenerationController? _generationController;
 
-  String _selectedCacheType = 'turbo4';
-  final List<String> _cacheTypes = ['f16', 'q8_0', 'turbo3', 'turbo4'];
+  String _selectedCacheType = 'q8_0';
+  static const List<String> _baseCacheTypes = ['f16', 'q8_0'];
   List<File> _localModels = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Run probe after the first frame
+    // Scan models after the first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
-       _doProbe();
        _scanModels();
     });
   }
@@ -148,8 +148,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final size = await file.length();
       print('DEBUG: Loading model file of size: $size bytes');
 
-      final bool looksLikeSimulator = Platform.isIOS && (_probeResult?.systemRamMb ?? 0) < 4000;
-      
+      // Only treat as simulator if probe ran AND confirmed very low RAM (<4 GB).
+      // Default to real-device settings when probe hasn't been run.
+      final bool looksLikeSimulator = _probeResult != null && _probeResult!.systemRamMb < 4000;
+
       final config = TQConfig(
         modelPath: _modelPath!,
         nCtx: looksLikeSimulator ? 128 : (_probeResult?.recommendedNCtx ?? 1024),
@@ -218,99 +220,113 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_probeResult != null) ...[
-                Text('GPU: ${_probeResult!.gpuAvailable ? "Yes" : "No"} '
-                    '(${_probeResult!.metalAvailable ? "Metal" : _probeResult!.vulkanAvailable ? "Vulkan" : "None"})'),
-                Text('System RAM: ${_probeResult!.systemRamMb} MB'),
-                Text('Recommended n_ctx: ${_probeResult!.recommendedNCtx}'),
-                const SizedBox(height: 8),
-              ] else ...[
-                ElevatedButton(onPressed: _doProbe, child: const Text("Run Hardware Probe")),
-                const SizedBox(height: 8),
-              ],
-              const Divider(),
-              const Text('Download Gemma 4 Models (External):', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextButton(
-                onPressed: () => _launchUrl('https://huggingface.co/unsloth/gemma-4-2b-it-GGUF'),
-                child: const Text('Gemma 4 E2B IT (Unsloth GGUF Repo)'),
-              ),
-              const Divider(),
-              if (_localModels.isNotEmpty) ...[
-                const Text('Local Models found in /models:', style: TextStyle(fontWeight: FontWeight.bold)),
-                ..._localModels.map((f) => ListTile(
-                  title: Text(f.path.split('/').last),
-                  leading: const Icon(Icons.model_training),
-                  onTap: () => setState(() => _modelPath = f.path),
-                  selected: _modelPath == f.path,
-                )),
-                const Divider(),
-              ],
-              ElevatedButton(
-                onPressed: _isGenerating ? null : _pickModel,
-                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
-                child: Text(_modelPath == null ? 'SELECT LOCAL GGUF MODEL' : 'Model: ${_modelPath!.split('/').last}'),
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedCacheType,
-                decoration: const InputDecoration(
-                  labelText: 'KV-Cache Type (TurboQuant)',
-                  border: OutlineInputBorder(),
-                ),
-                items: _cacheTypes.map((type) {
-                  return DropdownMenuItem(
-                    value: type,
-                    child: Text(type == 'f16' ? 'f16 (Off)' : type),
-                  );
-                }).toList(),
-                onChanged: _isGenerating ? null : (value) {
-                  if (value != null) {
-                    setState(() => _selectedCacheType = value);
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _promptController,
-                decoration: const InputDecoration(
-                  labelText: 'Prompt',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _isGenerating || _modelPath == null ? null : _generate,
-                      child: _isGenerating ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Generate'),
-                    ),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_probeResult != null) ...[
+                        Text('GPU: ${_probeResult!.gpuAvailable ? "Yes" : "No"} '
+                            '(${_probeResult!.metalAvailable ? "Metal" : _probeResult!.vulkanAvailable ? "Vulkan" : "None"})'),
+                        Text('System RAM: ${_probeResult!.systemRamMb} MB'),
+                        Text('Recommended n_ctx: ${_probeResult!.recommendedNCtx}'),
+                        const SizedBox(height: 8),
+                      ] else ...[
+                        ElevatedButton(onPressed: _doProbe, child: const Text("Run Hardware Probe")),
+                        const SizedBox(height: 8),
+                      ],
+                      const Divider(),
+                      const Text('Download Gemma 4 Models (External):', style: TextStyle(fontWeight: FontWeight.bold)),
+                      TextButton(
+                        onPressed: () => _launchUrl('https://huggingface.co/unsloth/gemma-4-2b-it-GGUF'),
+                        child: const Text('Gemma 4 E2B IT (Unsloth GGUF Repo)'),
+                      ),
+                      const Divider(),
+                      if (_localModels.isNotEmpty) ...[
+                        const Text('Local Models found in /models:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ..._localModels.map((f) => ListTile(
+                          title: Text(f.path.split('/').last),
+                          leading: const Icon(Icons.model_training),
+                          onTap: () => setState(() => _modelPath = f.path),
+                          selected: _modelPath == f.path,
+                        )),
+                        const Divider(),
+                      ],
+                      ElevatedButton(
+                        onPressed: _isGenerating ? null : _pickModel,
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, foregroundColor: Colors.white),
+                        child: Text(_modelPath == null ? 'SELECT LOCAL GGUF MODEL' : 'Model: ${_modelPath!.split('/').last}'),
+                      ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: _selectedCacheType,
+                        decoration: const InputDecoration(
+                          labelText: 'KV-Cache Type (TurboQuant)',
+                          border: OutlineInputBorder(),
+                        ),
+                        items: [
+                          ..._baseCacheTypes,
+                          if (_probeResult != null && _probeResult!.turbo3Supported) 'turbo3',
+                          if (_probeResult != null && _probeResult!.turbo4Supported) 'turbo4',
+                        ].map((type) {
+                          return DropdownMenuItem(
+                            value: type,
+                            child: Text(type == 'f16' ? 'f16 (Off)' : type),
+                          );
+                        }).toList(),
+                        onChanged: _isGenerating ? null : (value) {
+                          if (value != null) {
+                            setState(() => _selectedCacheType = value);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: _promptController,
+                        decoration: const InputDecoration(
+                          labelText: 'Prompt',
+                          border: OutlineInputBorder(),
+                        ),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: _isGenerating || _modelPath == null ? null : _generate,
+                              child: _isGenerating ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Generate'),
+                            ),
+                          ),
+                          if (_isGenerating) ...[
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: _stop,
+                              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                              child: const Text('Stop'),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        Text(
+                          _error!,
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                      ],
+                    ],
                   ),
-                  if (_isGenerating) ...[
-                    const SizedBox(width: 8),
-                    ElevatedButton(
-                      onPressed: _stop,
-                      style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
-                      child: const Text('Stop'),
-                    ),
-                  ],
-                ],
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.red),
                 ),
-              ],
-              const SizedBox(height: 16),
+              ),
+              const SizedBox(height: 8),
               const Text(
                 'Response:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 8),
-              Expanded(
+              const SizedBox(height: 4),
+              SizedBox(
+                height: 200,
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(

@@ -3,9 +3,10 @@ import UIKit
 
 public class TurboquantFlutterPlugin: NSObject, FlutterPlugin {
   public static func register(with registrar: FlutterPluginRegistrar) {
-    let channel = FlutterMethodChannel(name: "turboquant_flutter", binaryMessenger: registrar.messenger())
-    let instance = TurboquantFlutterPlugin()
-    registrar.addMethodCallDelegate(instance, channel: channel)
+    print("DEBUG: TurboquantFlutterPlugin registering (STUBBED)")
+    // let channel = FlutterMethodChannel(name: "turboquant_flutter", binaryMessenger: registrar.messenger())
+    // let instance = TurboquantFlutterPlugin()
+    // registrar.addMethodCallDelegate(instance, channel: channel)
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

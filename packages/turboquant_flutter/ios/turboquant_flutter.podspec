@@ -24,12 +24,16 @@ A new Flutter plugin project.
   }
   
   s.dependency 'Flutter'
-  s.platform = :ios, '13.0'
+  s.platform = :ios, '15.0'
   
   s.frameworks = 'Foundation', 'Accelerate', 'Metal', 'MetalKit'
 
   # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
+  s.pod_target_xcconfig = { 
+    'DEFINES_MODULE' => 'YES', 
+    'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386',
+    'OTHER_LDFLAGS' => '-force_load $(PODS_TARGET_SRCROOT)/libs/libtq_ffi.a -force_load $(PODS_TARGET_SRCROOT)/libs/libllama.a -force_load $(PODS_TARGET_SRCROOT)/libs/libggml.a -lc++'
+  }
   s.swift_version = '5.0'
 
   # If your plugin requires a privacy manifest, for example if it uses any
